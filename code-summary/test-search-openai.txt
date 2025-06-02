@@ -1,0 +1,711 @@
+Found 7 code block(s).
+
+[OpenAI] Response in 11.41 seconds.
+[OpenAI] Response in 10.50 seconds.
+[OpenAI] Response in 16.97 seconds.
+[OpenAI] Response in 11.60 seconds.
+[OpenAI] Response in 14.93 seconds.
+[OpenAI] Response in 11.37 seconds.
+[OpenAI] Response in 14.22 seconds.
+Function 1:
+```python
+import pytest
+from lib389.idm.directorymanager import DirectoryManager
+from lib389.utils import ensure_str
+
+@pytest.fixture(scope="module")
+def dm():
+    # Adjust these parameters as needed for your environment
+    # For example, you may need to set bind_dn, bind_pw, and server details
+    return DirectoryManager()
+
+@pytest.fixture
+def test_entry_dn():
+    return "uid=testuser,ou=people,dc=example,dc=com"
+
+@pytest.fixture
+def test_entry_attrs():
+    return {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["testuser"],
+        "sn": ["User"],
+        "cn": ["Test User"],
+        "mail": ["testuser@example.com"],
+    }
+
+def test_add_entry(dm, test_entry_dn, test_entry_attrs):
+    # Clean up if exists
+    try:
+        dm.delete(test_entry_dn)
+    except Exception:
+        pass
+    # Add entry
+    dm.add(test_entry_dn, test_entry_attrs)
+    # Verify add by searching
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filter="(objectClass=inetOrgPerson)",
+        attrs=["uid", "sn", "cn", "mail"]
+    )
+    assert len(result) == 1
+    entry = result[0]
+    assert ensure_str(entry.dn) == test_entry_dn
+    assert entry.get_attr_val_utf8("uid") == "testuser"
+    assert entry.get_attr_val_utf8("sn") == "User"
+    assert entry.get_attr_val_utf8("cn") == "Test User"
+    assert entry.get_attr_val_utf8("mail") == "testuser@example.com"
+
+def test_search_entry(dm, test_entry_dn):
+    # Search for the entry
+    result = dm.search_s(
+        base="ou=people,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["uid", "sn", "cn", "mail"]
+    )
+    assert any(ensure_str(entry.dn) == test_entry_dn for entry in result)
+
+def test_modify_entry(dm, test_entry_dn):
+    # Modify the 'sn' and 'mail' attributes
+    mods = [
+        ("replace", "sn", ["UserModified"]),
+        ("replace", "mail", ["testuser_modified@example.com"]),
+    ]
+    dm.modify_s(test_entry_dn, mods)
+    # Verify modification
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filter="(objectClass=inetOrgPerson)",
+        attrs=["sn", "mail"]
+    )
+    assert len(result) == 1
+    entry = result[0]
+    assert entry.get_attr_val_utf8("sn") == "UserModified"
+    assert entry.get_attr_val_utf8("mail") == "testuser_modified@example.com"
+
+def test_delete_entry(dm, test_entry_dn):
+    # Delete the entry
+    dm.delete(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(
+        base="ou=people,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["uid"]
+    )
+    assert all(ensure_str(entry.dn) != test_entry_dn for entry in result)
+```
+
+Function 2:
+```python
+import pytest
+from lib389.topologies import topology_standalone
+from lib389.idm.directorymanager import DirectoryManager
+from lib389.utils import ensure_bytes
+
+@pytest.fixture(scope="module")
+def dm(topology_standalone):
+    """Fixture to provide a DirectoryManager instance."""
+    return DirectoryManager(topology_standalone)
+
+@pytest.fixture
+def test_entry_dn():
+    """DN for the test entry."""
+    return "uid=testuser,ou=People,dc=example,dc=com"
+
+@pytest.fixture
+def test_entry_attrs():
+    """Attributes for the test entry."""
+    return {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": "testuser",
+        "cn": "Test User",
+        "sn": "User",
+        "mail": "testuser@example.com"
+    }
+
+def test_add_entry(dm, test_entry_dn, test_entry_attrs):
+    """Test adding an LDAP entry."""
+    # Clean up if exists
+    try:
+        dm.delete_s(test_entry_dn)
+    except Exception:
+        pass
+    # Add entry
+    dm.add_s(test_entry_dn, test_entry_attrs)
+    # Verify entry exists
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filter="(objectClass=inetOrgPerson)"
+    )
+    assert len(result) == 1
+    assert result[0][0].lower() == test_entry_dn.lower()
+
+def test_search_entry(dm, test_entry_dn, test_entry_attrs):
+    """Test searching for an LDAP entry."""
+    # Ensure entry exists
+    try:
+        dm.add_s(test_entry_dn, test_entry_attrs)
+    except Exception:
+        pass
+    # Search for entry
+    result = dm.search_s(
+        base="ou=People,dc=example,dc=com",
+        scope="subtree",
+        filter="(uid=testuser)",
+        attrs=["uid", "cn", "mail"]
+    )
+    assert len(result) >= 1
+    found = False
+    for dn, attrs in result:
+        if dn.lower() == test_entry_dn.lower():
+            found = True
+            assert attrs["uid"][0] == "testuser"
+            assert attrs["cn"][0] == "Test User"
+            assert attrs["mail"][0] == "testuser@example.com"
+    assert found
+
+def test_modify_entry(dm, test_entry_dn):
+    """Test modifying an LDAP entry."""
+    # Modify the 'mail' attribute
+    new_mail = "modifieduser@example.com"
+    dm.modify_s(
+        test_entry_dn,
+        [
+            ("mail", [(dm.MODIFY_REPLACE, [new_mail])])
+        ]
+    )
+    # Verify modification
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filter="(objectClass=inetOrgPerson)",
+        attrs=["mail"]
+    )
+    assert len(result) == 1
+    assert result[0][1]["mail"][0] == new_mail
+
+def test_delete_entry(dm, test_entry_dn):
+    """Test deleting an LDAP entry."""
+    # Delete entry
+    dm.delete_s(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(
+        base="ou=People,dc=example,dc=com",
+        scope="subtree",
+        filter="(uid=testuser)"
+    )
+    assert all(dn.lower() != test_entry_dn.lower() for dn, _ in result)
+```
+
+Function 3:
+```python
+import pytest
+from lib389.idm.directorymanager import DirectoryManager
+from lib389.utils import ensure_bytes
+from lib389._constants import DN_CONFIG, DN_USERS
+from lib389.topologies import topology_st as topo
+
+@pytest.fixture(scope="module")
+def dm(topo):
+    """Return a DirectoryManager instance bound as Directory Manager."""
+    return DirectoryManager(topo.standalone)
+
+@pytest.fixture
+def test_entry_dn(dm):
+    """Create a DN for testing and ensure it's deleted after."""
+    dn = "uid=testuser,{}".format(DN_USERS)
+    yield dn
+    try:
+        dm.delete_s(dn)
+    except Exception:
+        pass
+
+def test_add_entry(dm, test_entry_dn):
+    """Test adding an LDAP entry."""
+    entry = {
+        'objectclass': [b'top', b'person', b'organizationalPerson', b'inetOrgPerson'],
+        'uid': [b'testuser'],
+        'cn': [b'Test User'],
+        'sn': [b'User'],
+        'givenName': [b'Test'],
+        'mail': [b'testuser@example.com'],
+    }
+    dm.add_s(test_entry_dn, entry)
+    # Verify the entry exists
+    result = dm.search_s(base=test_entry_dn, scope='base', filter='(objectclass=*)')
+    assert len(result) == 1
+    assert result[0].dn == test_entry_dn
+
+def test_search_entry(dm, test_entry_dn):
+    """Test searching for an LDAP entry."""
+    # Ensure the entry exists
+    entry = {
+        'objectclass': [b'top', b'person', b'organizationalPerson', b'inetOrgPerson'],
+        'uid': [b'testuser'],
+        'cn': [b'Test User'],
+        'sn': [b'User'],
+        'givenName': [b'Test'],
+        'mail': [b'testuser@example.com'],
+    }
+    try:
+        dm.add_s(test_entry_dn, entry)
+    except Exception:
+        pass
+    # Search for the entry
+    result = dm.search_s(base=test_entry_dn, scope='base', filter='(uid=testuser)')
+    assert len(result) == 1
+    assert result[0].dn == test_entry_dn
+    assert result[0]['uid'][0] == b'testuser'
+
+def test_modify_entry(dm, test_entry_dn):
+    """Test modifying an LDAP entry."""
+    # Ensure the entry exists
+    entry = {
+        'objectclass': [b'top', b'person', b'organizationalPerson', b'inetOrgPerson'],
+        'uid': [b'testuser'],
+        'cn': [b'Test User'],
+        'sn': [b'User'],
+        'givenName': [b'Test'],
+        'mail': [b'testuser@example.com'],
+    }
+    try:
+        dm.add_s(test_entry_dn, entry)
+    except Exception:
+        pass
+    # Modify the mail attribute
+    dm.modify_s(test_entry_dn, [(dm.MOD_REPLACE, 'mail', [b'testuser2@example.com'])])
+    # Verify the modification
+    result = dm.search_s(base=test_entry_dn, scope='base', filter='(uid=testuser)')
+    assert len(result) == 1
+    assert result[0]['mail'][0] == b'testuser2@example.com'
+
+def test_delete_entry(dm, test_entry_dn):
+    """Test deleting an LDAP entry."""
+    # Ensure the entry exists
+    entry = {
+        'objectclass': [b'top', b'person', b'organizationalPerson', b'inetOrgPerson'],
+        'uid': [b'testuser'],
+        'cn': [b'Test User'],
+        'sn': [b'User'],
+        'givenName': [b'Test'],
+        'mail': [b'testuser@example.com'],
+    }
+    try:
+        dm.add_s(test_entry_dn, entry)
+    except Exception:
+        pass
+    # Delete the entry
+    dm.delete_s(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(base=test_entry_dn, scope='base', filter='(objectclass=*)')
+    assert len(result) == 0
+
+def test_search_invalid_dn(dm):
+    """Test searching with an invalid DN returns an error."""
+    with pytest.raises(Exception):
+        dm.search_s(base='invalid,dc=example,dc=com', scope='base', filter='(objectclass=*)')
+
+def test_search_empty_base_dn_non_base_scope(dm):
+    """Test that empty base DN with non-base scope maps to default naming context."""
+    # Get the default naming context
+    naming_contexts = dm.search_s(base="", scope="base", filter="(objectclass=
+
+Function 4:
+```python
+import pytest
+from lib389.directory_manager import DirectoryManager
+from lib389._constants import SCOPE_BASE, SCOPE_ONELEVEL, SCOPE_SUBTREE
+from lib389.utils import ensure_bytes
+
+@pytest.fixture(scope="module")
+def dm(tmpdir_factory):
+    # This assumes a running local 389-ds instance with default credentials
+    # Adjust as needed for your environment
+    # Example: DirectoryManager(uri="ldap://localhost:389", binddn="cn=Directory Manager", bindpw="password")
+    return DirectoryManager()
+
+@pytest.fixture
+def test_entry_dn():
+    return "uid=testuser,ou=People,dc=example,dc=com"
+
+@pytest.fixture
+def test_entry_attrs():
+    return {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["testuser"],
+        "sn": ["User"],
+        "cn": ["Test User"],
+        "mail": ["testuser@example.com"]
+    }
+
+def test_add_entry(dm, test_entry_dn, test_entry_attrs):
+    # Clean up if exists
+    try:
+        dm.delete(test_entry_dn)
+    except Exception:
+        pass
+    # Add entry
+    dm.add_s(test_entry_dn, test_entry_attrs)
+    # Verify add
+    result = dm.search_s(test_entry_dn, SCOPE_BASE, "(objectClass=inetOrgPerson)")
+    assert len(result) == 1
+    assert result[0][0].lower() == test_entry_dn.lower()
+
+def test_search_entry_base(dm, test_entry_dn):
+    result = dm.search_s(test_entry_dn, SCOPE_BASE, "(objectClass=inetOrgPerson)")
+    assert len(result) == 1
+    assert result[0][0].lower() == test_entry_dn.lower()
+
+def test_search_entry_onelevel(dm):
+    base = "ou=People,dc=example,dc=com"
+    result = dm.search_s(base, SCOPE_ONELEVEL, "(uid=testuser)")
+    assert any("uid=testuser" in dn for dn, attrs in result)
+
+def test_search_entry_subtree(dm):
+    base = "dc=example,dc=com"
+    result = dm.search_s(base, SCOPE_SUBTREE, "(uid=testuser)")
+    assert any("uid=testuser" in dn for dn, attrs in result)
+
+@pytest.mark.parametrize("scope", [999, -1, None])
+def test_search_invalid_scope(dm, test_entry_dn, scope):
+    # Should raise an error for invalid scope
+    with pytest.raises(Exception):
+        dm.search_s(test_entry_dn, scope, "(objectClass=inetOrgPerson)")
+
+def test_search_invalid_filter(dm, test_entry_dn):
+    # Should raise an error for invalid filter
+    with pytest.raises(Exception):
+        dm.search_s(test_entry_dn, SCOPE_BASE, "(&(objectClass=inetOrgPerson")  # Unbalanced parenthesis
+
+def test_modify_entry(dm, test_entry_dn):
+    # Replace mail attribute
+    new_mail = "newmail@example.com"
+    dm.modify_s(test_entry_dn, [(2, "mail", [ensure_bytes(new_mail)])])  # 2 = MOD_REPLACE
+    result = dm.search_s(test_entry_dn, SCOPE_BASE, "(objectClass=inetOrgPerson)")
+    assert result[0][1]["mail"][0].decode() == new_mail
+
+def test_delete_entry(dm, test_entry_dn):
+    dm.delete(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(test_entry_dn, SCOPE_BASE, "(objectClass=inetOrgPerson)")
+    assert result == []
+```
+
+Function 5:
+```python
+import pytest
+from lib389.idm.directorymanager import DirectoryManager
+from lib389.utils import ensure_str
+
+@pytest.fixture(scope="module")
+def dm_instance(tmpdir_factory):
+    # Setup a DirectoryManager instance for testing
+    # Assumes a running 389 Directory Server instance and proper config
+    # Adjust bind_dn, bind_pw, and uri as needed for your environment
+    dm = DirectoryManager(
+        uri="ldap://localhost:389",
+        bind_dn="cn=Directory Manager",
+        bind_pw="password"
+    )
+    yield dm
+    dm.close()
+
+def test_add_entry(dm_instance):
+    dn = "uid=testuser,ou=People,dc=example,dc=com"
+    entry = {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["testuser"],
+        "sn": ["User"],
+        "cn": ["Test User"],
+        "mail": ["testuser@example.com"]
+    }
+    # Clean up if already exists
+    try:
+        dm_instance.delete_s(dn)
+    except Exception:
+        pass
+    # Add entry
+    dm_instance.add_s(dn, entry)
+    # Verify add
+    result = dm_instance.search_s(
+        base_dn="ou=People,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["uid", "sn", "cn", "mail"]
+    )
+    assert len(result) == 1
+    assert result[0].dn == dn
+    assert ensure_str(result[0]["uid"][0]) == "testuser"
+
+def test_search_entry(dm_instance):
+    dn = "uid=testuser,ou=People,dc=example,dc=com"
+    # Search for the entry
+    result = dm_instance.search_s(
+        base_dn="ou=People,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["uid", "sn", "cn", "mail"]
+    )
+    assert len(result) == 1
+    assert result[0].dn == dn
+    assert ensure_str(result[0]["mail"][0]) == "testuser@example.com"
+
+def test_modify_entry(dm_instance):
+    dn = "uid=testuser,ou=People,dc=example,dc=com"
+    # Modify the mail attribute
+    new_mail = "newmail@example.com"
+    dm_instance.modify_s(
+        dn,
+        [
+            ("mail", [new_mail], "replace")
+        ]
+    )
+    # Verify modification
+    result = dm_instance.search_s(
+        base_dn="ou=People,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["mail"]
+    )
+    assert len(result) == 1
+    assert ensure_str(result[0]["mail"][0]) == new_mail
+
+def test_delete_entry(dm_instance):
+    dn = "uid=testuser,ou=People,dc=example,dc=com"
+    # Delete the entry
+    dm_instance.delete_s(dn)
+    # Verify deletion
+    result = dm_instance.search_s(
+        base_dn="ou=People,dc=example,dc=com",
+        scope="sub",
+        filter="(uid=testuser)",
+        attrs=["uid"]
+    )
+    assert len(result) == 0
+
+def test_search_too_many_attrs(dm_instance):
+    dn = "uid=testuser2,ou=People,dc=example,dc=com"
+    entry = {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["testuser2"],
+        "sn": ["User2"],
+        "cn": ["Test User2"],
+        "mail": ["testuser2@example.com"]
+    }
+    # Add entry for this test
+    try:
+        dm_instance.add_s(dn, entry)
+    except Exception:
+        pass
+    # Request more than 10 attributes (simulate protocol error)
+    attrs = ["uid", "sn", "cn", "mail", "objectClass", "givenName", "telephoneNumber",
+             "description", "title", "ou", "l", "st"]
+    with pytest.raises(Exception):
+        dm_instance.search_s(
+            base_dn="ou=People,dc=example,dc=com",
+            scope="sub",
+            filter="(uid=testuser2)",
+            attrs=attrs
+        )
+    # Clean up
+    dm_instance.delete_s(dn)
+
+def test_search_invalid_attribute_format(dm_instance):
+    dn = "uid=testuser3,ou=People,dc=example,dc=com"
+    entry = {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["
+
+Function 6:
+```python
+import pytest
+from lib389.idm.directorymanager import DirectoryManager
+from lib389.utils import ensure_bytes
+
+@pytest.fixture(scope="module")
+def dm(tmpdir_factory):
+    # Setup DirectoryManager with a test instance
+    # You may need to adjust the instance location and credentials as per your environment
+    from lib389.instance.setup import SetupDs
+    instance = SetupDs(tmpdir_factory.mktemp("ds"))
+    instance.setup()
+    dm = DirectoryManager(instance)
+    yield dm
+    instance.delete()
+
+@pytest.fixture
+def test_entry_dn():
+    return "uid=testuser,ou=People,dc=example,dc=com"
+
+@pytest.fixture
+def test_entry_attrs():
+    return {
+        "objectClass": ["top", "person", "organizationalPerson", "inetOrgPerson"],
+        "uid": ["testuser"],
+        "cn": ["Test User"],
+        "sn": ["User"],
+        "mail": ["testuser@example.com"],
+    }
+
+def test_add_entry(dm, test_entry_dn, test_entry_attrs):
+    # Clean up if already exists
+    try:
+        dm.delete_s(test_entry_dn)
+    except Exception:
+        pass
+    # Add entry
+    dm.add_s(test_entry_dn, test_entry_attrs)
+    # Verify entry exists
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filterstr="(objectClass=inetOrgPerson)",
+        attrlist=["uid", "cn", "sn", "mail"]
+    )
+    assert len(result) == 1
+    entry = result[0][1]
+    assert entry["uid"][0] == b"testuser"
+    assert entry["cn"][0] == b"Test User"
+    assert entry["sn"][0] == b"User"
+    assert entry["mail"][0] == b"testuser@example.com"
+
+def test_search_entry(dm, test_entry_dn):
+    # Search for the entry
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filterstr="(uid=testuser)",
+        attrlist=["uid", "cn", "sn", "mail"]
+    )
+    assert len(result) == 1
+    entry = result[0][1]
+    assert entry["uid"][0] == b"testuser"
+
+def test_modify_entry(dm, test_entry_dn):
+    # Modify the entry's mail attribute
+    new_mail = "newmail@example.com"
+    dm.modify_s(
+        test_entry_dn,
+        [
+            ("replace", "mail", [ensure_bytes(new_mail)]),
+        ]
+    )
+    # Verify the modification
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filterstr="(uid=testuser)",
+        attrlist=["mail"]
+    )
+    assert len(result) == 1
+    entry = result[0][1]
+    assert entry["mail"][0] == ensure_bytes(new_mail)
+
+def test_delete_entry(dm, test_entry_dn):
+    # Delete the entry
+    dm.delete_s(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope="base",
+        filterstr="(uid=testuser)",
+        attrlist=["uid"]
+    )
+    assert len(result) == 0
+```
+
+Function 7:
+```python
+import pytest
+from lib389.directory_manager import DirectoryManager
+from lib389._constants import SCOPE_BASE, SCOPE_ONELEVEL, SCOPE_SUBTREE
+
+@pytest.fixture(scope="module")
+def dm(tmpdir_factory):
+    # Setup DirectoryManager with default instance
+    # Assumes a running 389-ds instance with default credentials
+    # Adjust as needed for your environment
+    dm = DirectoryManager()
+    dm.open()
+    yield dm
+    dm.close()
+
+@pytest.fixture
+def test_entry_dn():
+    return "uid=testuser,ou=People,dc=example,dc=com"
+
+@pytest.fixture
+def test_entry_attrs():
+    return {
+        'objectClass': ['top', 'person', 'organizationalPerson', 'inetOrgPerson'],
+        'uid': ['testuser'],
+        'sn': ['User'],
+        'cn': ['Test User'],
+        'mail': ['testuser@example.com'],
+    }
+
+def test_add_entry(dm, test_entry_dn, test_entry_attrs):
+    # Clean up if exists
+    try:
+        dm.delete_s(test_entry_dn)
+    except Exception:
+        pass
+    # Add entry
+    dm.add_s(test_entry_dn, test_entry_attrs)
+    # Verify entry exists
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope=SCOPE_BASE,
+        filterstr='(objectClass=inetOrgPerson)'
+    )
+    assert len(result) == 1
+    assert result[0][0].lower() == test_entry_dn.lower()
+
+def test_search_entry(dm, test_entry_dn):
+    # Search for the entry
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope=SCOPE_BASE,
+        filterstr='(uid=testuser)'
+    )
+    assert len(result) == 1
+    assert result[0][0].lower() == test_entry_dn.lower()
+    attrs = result[0][1]
+    assert attrs['uid'][0] == 'testuser'
+    assert attrs['cn'][0] == 'Test User'
+
+def test_modify_entry(dm, test_entry_dn):
+    # Modify the entry's mail attribute
+    new_mail = 'newmail@example.com'
+    dm.modify_s(
+        test_entry_dn,
+        [
+            ('mail', [(2, [new_mail])])  # 2 = ldap.MOD_REPLACE
+        ]
+    )
+    # Verify modification
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope=SCOPE_BASE,
+        filterstr='(uid=testuser)'
+    )
+    assert len(result) == 1
+    attrs = result[0][1]
+    assert attrs['mail'][0] == new_mail
+
+def test_delete_entry(dm, test_entry_dn):
+    # Delete the entry
+    dm.delete_s(test_entry_dn)
+    # Verify deletion
+    result = dm.search_s(
+        base=test_entry_dn,
+        scope=SCOPE_BASE,
+        filterstr='(uid=testuser)'
+    )
+    assert len(result) == 0
+```
+
