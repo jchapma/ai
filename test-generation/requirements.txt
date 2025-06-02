@@ -1,0 +1,4 @@
+pydriller
+requests
+httpx
+openai
